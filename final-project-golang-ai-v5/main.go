@@ -48,6 +48,8 @@ func main() {
 			return
 		}
 
+		query := r.FormValue("query")
+
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, "Failed to read file", http.StatusBadRequest)
@@ -67,47 +69,50 @@ func main() {
 			return
 		}
 
-		response := map[string]interface{}{
-			"status": "success",
-			"data":   result,
+		res, err := aiService.AnalyzeData(result, query, token)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+
+		var responseBody = map[string]any{
+			"status": "success",
+			"data":   res,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(responseBody)
 	}).Methods("POST")
 
 	// Chat endpoint
 	router.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
 		var reqBody struct {
-			Context string `json:"context"`
-			Query   string `json:"query"`
+			Query string `json:"query"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
-	
+
 		session := getSession(r)
 		context, _ := session.Values["context"].(string)
-		if reqBody.Context != "" {
-			context = reqBody.Context
-		}
-	
+
 		chatResponse, err := aiService.ChatWithAI(context, reqBody.Query, token)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	
+
 		session.Values["context"] = context
 		session.Save(r, w)
-	
+
 		response := map[string]interface{}{
 			"status": "success",
 			"reply":  chatResponse.GeneratedText,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
-	}).Methods("POST")	
+	}).Methods("POST")
 
 	// Enable CORS
 	corsHandler := cors.New(cors.Options{
